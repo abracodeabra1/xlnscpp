@@ -539,7 +539,7 @@ inline void xlns32_batch_sigmoid(const xlns32 *a, xlns32 *c, size_t n) {
 // Tanh: (exp(x) - exp(-x)) / (exp(x) + exp(-x))
 inline xlns32 xlns32_tanh(xlns32 x) {
     float fx = xlns322fp(x);
-    float result = tanhf(fx);
+    float result = tanh(fx);
     return fp2xlns32(result);
 }
 
@@ -553,7 +553,7 @@ inline void xlns32_batch_tanh(const xlns32 *a, xlns32 *c, size_t n) {
 // SiLU (Swish): x * sigmoid(x) = x / (1 + exp(-x))
 inline xlns32 xlns32_silu(xlns32 x) {
     float fx = xlns322fp(x);
-    float result = fx / (1.0f + expf(-fx));
+    float result = fx / (1.0f + exp(-fx));
     return fp2xlns32(result);
 }
 
@@ -569,7 +569,7 @@ inline xlns32 xlns32_gelu(xlns32 x) {
     float fx = xlns322fp(x);
     const float sqrt_2_over_pi = 0.7978845608f;  // sqrt(2/pi)
     float inner = sqrt_2_over_pi * (fx + 0.044715f * fx * fx * fx);
-    float result = 0.5f * fx * (1.0f + tanhf(inner));
+    float result = 0.5f * fx * (1.0f + tanh(inner));
     return fp2xlns32(result);
 }
 
@@ -588,7 +588,7 @@ inline void xlns32_softmax_exp(const xlns32 *a, xlns32 *c, size_t n) {
     for (size_t i = 0; i < n; i++) {
         // c[i] = exp(a[i] - max)
         float fx = xlns322fp(a[i]) - xlns322fp(maxval);
-        c[i] = fp2xlns32(expf(fx));
+        c[i] = fp2xlns32(exp(fx));
     }
 }
 
@@ -600,14 +600,14 @@ inline void xlns32_softmax_exp(const xlns32 *a, xlns32 *c, size_t n) {
 // exp(x) - computes e^x
 inline xlns32 xlns32_exp(xlns32 x) {
     float fx = xlns322fp(x);
-    return fp2xlns32(expf(fx));
+    return fp2xlns32(exp(fx));
 }
 
 // log(x) - computes natural log
 inline xlns32 xlns32_log(xlns32 x) {
     float fx = xlns322fp(x);
     if (fx <= 0.0f) return xlns32_zero;  // Handle invalid input
-    return fp2xlns32(logf(fx));
+    return fp2xlns32(log(fx));
 }
 
 // exp2(x) - computes 2^x (efficient in LNS: just scale the value)
@@ -615,14 +615,14 @@ inline xlns32 xlns32_log(xlns32 x) {
 // So this shifts the log representation
 inline xlns32 xlns32_exp2(xlns32 x) {
     float fx = xlns322fp(x);
-    return fp2xlns32(exp2f(fx));
+    return fp2xlns32(pow(2.0,fx));
 }
 
 // log2(x) - computes log base 2 (very efficient in LNS)
 inline xlns32 xlns32_log2(xlns32 x) {
     float fx = xlns322fp(x);
     if (fx <= 0.0f) return xlns32_zero;
-    return fp2xlns32(log2f(fx));
+    return fp2xlns32(log(fx)/log(2.0));
 }
 
 // pow(base, exp) - computes base^exp
@@ -662,7 +662,7 @@ inline void xlns32_layernorm(const xlns32 *x, xlns32 *out,
     }
     var = xlns32_div(var, fp2xlns32((float)n));
     // normalize
-    xlns32 inv_std = fp2xlns32(1.0f / sqrtf(xlns322fp(var) + eps));
+    xlns32 inv_std = fp2xlns32(1.0f / sqrt(xlns322fp(var) + eps));
     for (size_t i = 0; i < n; i++) {
         out[i] = xlns32_mul(xlns32_sub(x[i], mean), inv_std);
         if (gamma) out[i] = xlns32_mul(out[i], gamma[i]);
