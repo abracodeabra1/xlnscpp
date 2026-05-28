@@ -1,3 +1,10 @@
+#ifdef xlns32_zero
+#else
+  #define xlns32_aicasb
+  #define xlns32_ideal
+  #include "xlns32.cpp"
+#endif
+
 #define xlns32_F 23
 #ifdef xlns32_db_ideal
 #else
@@ -12,6 +19,8 @@
   }
 
 //need to define xlns32_aicasb if xlns32_add_lpvip is to give accurate summation
+
+
 
 inline xlns32 xlns32_add_lpvip(xlns32 x, xlns32 y)
 {
@@ -34,8 +43,8 @@ inline xlns32 xlns32_add_lpvip(xlns32 x, xlns32 y)
                                 (z >> 2) + (9 << (xlns32_F-3));//  .25*z + 9/8
    //printf("%i %08x %08x\n",usedb,z,precond);
        xlns32_signed postcond = (z <= -(3<<xlns32_F)) ? 0: 
-                            z >= -(3<<(xlns32_F-2)) ? -(1<<(xlns32_F-6)) : 
-                                                      +(1<<(xlns32_F-6));
+                            z >= -(3<<(xlns32_F-2)) ? -(1<<(xlns32_F-6)): //6)) : 
+                                                      +(1<<(xlns32_F-6)); //6));
        xlns32_signed mitch = (-z >= 1<<xlns32_F)||(usedb==0) ? xlns32_mitch(z+precond) : 
                                           -xlns32_db_ideal(-z)-z; // use ideal for singularity
        adjust = usedb ? -mitch : (z==0) ? 1<<(xlns32_F) : mitch + postcond;
@@ -44,3 +53,55 @@ inline xlns32 xlns32_add_lpvip(xlns32 x, xlns32 y)
                      xlns32_zero :
                      xlns32_mul(maxxy, xlns32_logsignmask + adjustez);
 }
+
+#ifdef xlns16_zero
+
+
+// Vector operations (critical for ggml MUL_MAT) using xlns16 ops with xlns32 lpvip accumulation
+
+// Sum of array elements: result = Σ a[i]
+inline xlns16 xlns16_sum_lpvip32(const xlns16 *a, size_t n) {
+    if (n == 0) return xlns16_zero;
+    xlns32 sum = a[0];
+    for (size_t i = 1; i < n; i++) {
+        sum = xlns32_add_lpvip(sum, ((xlns32)a[i])<<16);
+    }
+    return sum>>16;
+}
+
+// Vector dot product: result = Σ(a[i] * b[i])
+inline xlns16 xlns16_vec_dot_lpvip32(const xlns16 *a, const xlns16 *b, size_t n) {
+    if (n == 0) return xlns16_zero;
+    xlns32 sum = ((xlns32)xlns16_mul(a[0], b[0]))<<16;
+    for (size_t i = 1; i < n; i++) {
+        sum = xlns32_add_lpvip(sum, ((xlns32)xlns16_mul(a[i], b[i]))<<16);
+    }
+    return sum>>16;
+}
+
+// Layer normalization: (x - mean) / sqrt(var + eps) * gamma + beta
+inline void xlns16_layernorm_lpvip32(const xlns16 *x, xlns16 *out,
+                       const xlns16 *gamma, const xlns16 *beta,
+                       size_t n, float eps) {
+    // compute mean
+    xlns16 mean = xlns16_sum_lpvip32(x, n);
+    mean = xlns16_div(mean, fp2xlns16((float)n));
+    // compute variance
+    xlns32 var = xlns32_zero;
+    for (size_t i = 0; i < n; i++) {
+        xlns16 diff = xlns16_sub(x[i], mean);
+        var = xlns32_add_lpvip(var, ((xlns32)xlns16_mul(diff, diff))<<16);
+    }
+    var = xlns32_div(var, fp2xlns32((float)n));
+    // normalize
+    xlns16 inv_std = fp2xlns16(1.0f / sqrt(xlns322fp(var) + eps));
+    for (size_t i = 0; i < n; i++) {
+        out[i] = xlns16_mul(xlns16_sub(x[i], mean), inv_std);
+        if (gamma) out[i] = xlns16_mul(out[i], gamma[i]);
+        if (beta)  out[i] = xlns16_add(out[i], beta[i]);
+    }
+}
+
+
+#endif
+

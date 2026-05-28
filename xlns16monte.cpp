@@ -31,3 +31,51 @@ xlns16 xlns16_add_monte(xlns16 x, xlns16 y)
     #endif
     return xlns32_add_lpvip( (((xlns32)x)<<16)|xlns16_randombits, (((xlns32)y)<<16)|xlns16_randombits)>>16;
 }
+
+
+// Vector operations (critical for ggml MUL_MAT) using MCLNS
+
+// Sum of array elements: result = Σ a[i]
+inline xlns16 xlns16_sum_monte(const xlns16 *a, size_t n) {
+    if (n == 0) return xlns16_zero;
+    xlns16 sum = a[0];
+    for (size_t i = 1; i < n; i++) {
+        sum = xlns16_add_monte(sum, a[i]);
+    }
+    return sum;
+}
+
+// Vector dot product: result = Σ(a[i] * b[i])
+inline xlns16 xlns16_vec_dot_monte(const xlns16 *a, const xlns16 *b, size_t n) {
+    if (n == 0) return xlns16_zero;
+    xlns16 sum = xlns16_mul(a[0], b[0]);
+    for (size_t i = 1; i < n; i++) {
+        sum = xlns16_add_monte(sum, xlns16_mul(a[i], b[i]));
+    }
+    return sum;
+}
+
+// Layer normalization: (x - mean) / sqrt(var + eps) * gamma + beta
+inline void xlns16_layernorm_monte(const xlns16 *x, xlns16 *out,
+                       const xlns16 *gamma, const xlns16 *beta,
+                       size_t n, float eps) {
+    // compute mean
+    xlns16 mean = xlns16_sum_monte(x, n);
+    mean = xlns16_div(mean, fp2xlns16((float)n));
+    // compute variance
+    xlns16 var = xlns16_zero;
+    for (size_t i = 0; i < n; i++) {
+        xlns16 diff = xlns16_sub(x[i], mean);
+        var = xlns16_add_monte(var, xlns16_mul(diff, diff));
+    }
+    var = xlns16_div(var, fp2xlns16((float)n));
+    // normalize
+    xlns16 inv_std = fp2xlns16(1.0f / sqrt(xlns162fp(var) + eps));
+    for (size_t i = 0; i < n; i++) {
+        out[i] = xlns16_mul(xlns16_sub(x[i], mean), inv_std);
+        if (gamma) out[i] = xlns16_mul(out[i], gamma[i]);
+        if (beta)  out[i] = xlns16_add(out[i], beta[i]);
+    }
+}
+
+
