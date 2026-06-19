@@ -12,7 +12,7 @@
 
 The above are implemented sequentially using `xlns16_add`.  A similar set of operations are available in `xlns32.cpp`
 
-The problem with the above is that when the `xlns16` array being summed is long, it is likely the accumulator will become stuck at a highly incorrect value because the absolute value of partial sum is much larger that the individual element being added.  In such a case, the most accurate result that `xlns16_add` can return is the unchanged value of the partial sum.  To overcome this, one could sum such `xlns16` values using an `xlns32` accumulator, but that is very expensive.  
+The problem with the above is that when the `xlns16` array being summed is long, it is likely the accumulator will become stuck at a highly incorrect value because the absolute value of the partial sum is much larger that the individual element being added.  In such a case, the most accurate result that `xlns16_add` can return is the unchanged value of the partial sum.  To overcome this, one could sum such `xlns16` values using an `xlns32` accumulator, but that is very expensive.  
 
 Other alternatives are provided that are (on average) more accurate the `xlns16`-only accumulation, but which are more hardware-efficient than pure `xlns32` summation.  One alternative uses `xlns32lpvip.cpp` summation (less costly than `xlns32`), which takes the `xlns16` array, computes the approximate 32-bit sum, and returns it as `xlns16`.  This approach keeps full 32-bit accumulation, but is approximate: 
 
