@@ -24,7 +24,7 @@ Other alternatives are provided that are (on average) more accurate the `xlns16`
 
 `xlns16_layernorm_lpvip32(x,out,gamma,beta,n,eps)` 
 
-The other approach uses Monte-Carlo LNS (MCLNS), which is given in doi:10.1049/iet-cta.2010.0736 (and some earlier papers cited there).   The main purpose of MCLNS  is to sum a large sequence of `xlns16` values without having to keep an `xlns32` accumulator, which will make the hardware more efficient.  This is most successful the result is not near zero;
+The other approach uses Monte-Carlo LNS (MCLNS), which is given in [https://digital-library.theiet.org/doi/10.1049/iet-cta.2010.0736] (and some earlier papers cited there).   The main purpose of MCLNS  is to sum a large sequence of `xlns16` values without having to keep an `xlns32` accumulator, which will make the hardware more efficient.  This is most successful the result is not near zero;
 it is less effective when the sum is near zero (catastrophic cancelation).   There are two alternative implementations of the following functions (`xlns16monte.cpp` and `xlns16monte_bylpvip.cpp`; the latter needs `xlns32lpvip.cpp` included first; the former does not need this):
 
 
