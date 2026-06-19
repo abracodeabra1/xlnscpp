@@ -1,12 +1,15 @@
 //Monte-Carlo LNS (MCLNS) is given in doi:10.1049/iet-cta.2010.0736 (and some earlier papers cited there).
+//The original MCLNS and its most efficient hardware only needs the noise at the end.
+//Here, xlns32_add_lpvip(x+noise, y+noise) is the same as (max(x,y)+noise) +sb(-|x-y|) is mostly 
+//software implementation trick that is roughly equivalent using only a few lines of code. 
+//The trick is identical noise added to both x and y makes |x+noise-(y+noise)| cancels out noise.
 //The main purpose of MCLNS here is to sum a large sequence of xlns16 values (as in an LLM)
 //without having to keep an xlns32 accumulator.  This is most successful the result is not near zero;
 //it is less effective when the sum is near zero (catastrophic cancelation)
-//This implementation has the advantage all ops occur in 16-bit
 
 //MCLNS does not require quality "randomness"; the default is a max len linear feedback shift register
 //alternatively, if 1 < xlns16_num_rand < 15 is defined, this code uses rand()
-//  small xlns16_num_rand give poor results  
+//  small xlns16_num_rand give poor results;  larger values are limited to lpvip accuracy
 
 #ifdef xlns16_num_rand
         // if so, use that # bits from rand() 
@@ -14,19 +17,8 @@
   xlns16 xlns16_randombits= 7;  //any seed in 1 <= seed <= 65535;
 #endif
 
-inline xlns16 xlns16_monte_modifier(xlns16 x, xlns16 y)
+xlns16 xlns16_add_monte(xlns16 x, xlns16 y)
 {
-    //This replacates code in xlns16_add (to obtain same z and usedb)
-    xlns16 minxyl, maxxy, xl, yl, usedb, adjust, adjustez,result;
-    xlns16_signed z;
-    xl = x & xlns16_logmask;
-    yl = y & xlns16_logmask;
-    minxyl = (yl>xl) ? xl : yl;
-    maxxy  = (xl>yl) ? x  : y;
-    z = minxyl - (maxxy&xlns16_logmask);
-    usedb = xlns16_signmask&(x^y); 
-
-    //this chooses a random number
     #ifdef xlns16_num_rand     // use specified bits from rand() 
         xlns16 xlns16_randombits;
         xlns16_randombits = (rand()%(1<<xlns16_num_rand))<<(16-xlns16_num_rand);
@@ -37,30 +29,8 @@ inline xlns16 xlns16_monte_modifier(xlns16 x, xlns16 y)
             xlns16_randombits ^= 0xB400u; // Mask for taps 16, 15, 13, 4
         }
     #endif
-
-    //This sometimes returns +/-1 (for |z|>F) based on z (bigger z more prob result!=0) and usedb (+1 for sb;-1 for db)
-    //precond=7/16 for both sb and db; sometimes bigger and sometimes smaller than ideal; good compromise
-    result = (xlns16_randombits>>(16-xlns16_F)) + xlns16_mitch(z + (xlns16_F<<xlns16_F) + (7<<(xlns16_F-4))); // z+F+7/16
-    result = result >> xlns16_F;
-    result &= (z < -((xlns16_F)<<xlns16_F));
-    if (usedb) 
-        return -result;
-    else
-        return result; 
+    return xlns32_add_lpvip( (((xlns32)x)<<16)|xlns16_randombits, (((xlns32)y)<<16)|xlns16_randombits)>>16;
 }
-
-
-inline xlns16 xlns16_add_monte(xlns16 x, xlns16 y)
-{
-    xlns16 normres = xlns16_add(x,y);
-    xlns16 modifier = xlns16_monte_modifier(x,y); //uses PRNG only here
-    //return xlns16_add(x,y) + modifier; //xlns16_monte_modifier(x,y); //uses PRNG here
-    if ((normres != x) && (normres != y)) 
-        return normres;                   //best if define xlns16_ideal or xlns16_table
-    else
-        return normres + modifier;
-}
-
 
 
 // Vector operations (critical for ggml MUL_MAT) using MCLNS
@@ -97,7 +67,6 @@ inline void xlns16_softmax_monte(const xlns16 *a, xlns16 *c, size_t n) {
         c[i] = xlns16_div(c[i], total);
 }
 
-
 // Layer normalization: (x - mean) / sqrt(var + eps) * gamma + beta
 inline void xlns16_layernorm_monte(const xlns16 *x, xlns16 *out,
                        const xlns16 *gamma, const xlns16 *beta,
@@ -120,7 +89,5 @@ inline void xlns16_layernorm_monte(const xlns16 *x, xlns16 *out,
         if (beta)  out[i] = xlns16_add(out[i], beta[i]);
     }
 }
-
-
 
 
