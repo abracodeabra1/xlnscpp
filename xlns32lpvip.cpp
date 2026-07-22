@@ -62,7 +62,7 @@ inline xlns32 xlns32_add_lpvip(xlns32 x, xlns32 y)
 // Sum of array elements: result = Σ a[i]
 inline xlns16 xlns16_sum_lpvip32(const xlns16 *a, size_t n) {
     if (n == 0) return xlns16_zero;
-    xlns32 sum = a[0];
+    xlns32 sum = ((xlns32)a[0])<<16;
     for (size_t i = 1; i < n; i++) {
         sum = xlns32_add_lpvip(sum, ((xlns32)a[i])<<16);
     }
@@ -100,6 +100,53 @@ inline void xlns16_layernorm_lpvip32(const xlns16 *x, xlns16 *out,
         if (gamma) out[i] = xlns16_mul(out[i], gamma[i]);
         if (beta)  out[i] = xlns16_add(out[i], beta[i]);
     }
+}
+
+// Softmax: exp(scale*a[i] - max) / sum(exp(scale*a[j] - max)).
+// Same control flow as xlns16_softmax. Scale, mask bias, and max-sub use
+// plain xlns16 ops; only the normalization sum uses xlns16_sum_lpvip32.
+// a[i] == xlns16_neg_inf is treated as already-excluded and skips the scale
+// multiply. c may alias a (in-place).
+inline void xlns16_softmax_lpvip32(const xlns16 *a, xlns16 *c, size_t n,
+                                    xlns16 scale = xlns16_one) {
+    if (n == 0) return;
+    xlns16 maxval = xlns16_neg_inf;
+    for (size_t i = 0; i < n; i++) {
+        xlns16 v = a[i];
+        if (v != xlns16_neg_inf) v = xlns16_mul(v, scale);
+        c[i] = v;
+        if (xlns16_gt(c[i], maxval)) maxval = c[i];
+    }
+    for (size_t i = 0; i < n; i++)
+        c[i] = xlns16_exp(xlns16_sub(c[i], maxval));
+    xlns16 total = xlns16_sum_lpvip32(c, n);
+    for (size_t i = 0; i < n; i++)
+        c[i] = xlns16_div(c[i], total);
+}
+
+// Masked variant of xlns16_softmax_lpvip32. mask[i] is a pre-converted xlns16
+// value: xlns16_neg_inf marks a masked-out position, xlns16_zero means "no
+// mask", anything else is an additive bias (e.g. ALiBi).
+inline void xlns16_softmax_masked_lpvip32(const xlns16 *a, const xlns16 *mask,
+                                           xlns16 *c, size_t n,
+                                           xlns16 scale = xlns16_one) {
+    if (n == 0) return;
+    xlns16 maxval = xlns16_neg_inf;
+    for (size_t i = 0; i < n; i++) {
+        xlns16 v = a[i];
+        if (v != xlns16_neg_inf) {
+            v = xlns16_mul(v, scale);
+            if (mask[i] == xlns16_neg_inf) v = xlns16_neg_inf;
+            else if (!xlns16_is_zero(mask[i])) v = xlns16_add(v, mask[i]);
+        }
+        c[i] = v;
+        if (xlns16_gt(c[i], maxval)) maxval = c[i];
+    }
+    for (size_t i = 0; i < n; i++)
+        c[i] = xlns16_exp(xlns16_sub(c[i], maxval));
+    xlns16 total = xlns16_sum_lpvip32(c, n);
+    for (size_t i = 0; i < n; i++)
+        c[i] = xlns16_div(c[i], total);
 }
 
 
